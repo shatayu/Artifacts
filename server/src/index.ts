@@ -5,6 +5,7 @@ import { listRoute } from "./routes/list.ts";
 import { htmlRoute } from "./routes/html.ts";
 import { queryRoute } from "./routes/query.ts";
 import { syncRoute } from "./routes/sync.ts";
+import { pagesRoute } from "./routes/pages.ts";
 
 const fastify = Fastify({
   logger: {
@@ -23,6 +24,7 @@ await fastify.register(listRoute);
 await fastify.register(htmlRoute);
 await fastify.register(queryRoute);
 await fastify.register(syncRoute);
+await fastify.register(pagesRoute);
 
 async function main() {
   await runMigrations();

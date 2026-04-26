@@ -8,13 +8,13 @@ dist/
 # TypeScript
 *.tsbuildinfo
 
-# Xcode
-ios/**/build/
-ios/**/DerivedData/
-ios/**/xcuserdata/
-ios/**/*.xcworkspace/xcuserdata/
-ios/**/Config-Local.xcconfig
-ios/**/Config-Prod.xcconfig
+# Xcode (also covers ios.archived/)
+ios*/**/build/
+ios*/**/DerivedData/
+ios*/**/xcuserdata/
+ios*/**/*.xcworkspace/xcuserdata/
+ios*/**/Config-Local.xcconfig
+ios*/**/Config-Prod.xcconfig
 
 # macOS
 .DS_Store

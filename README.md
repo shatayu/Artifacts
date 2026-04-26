@@ -1,23 +1,27 @@
 # Artifacts
 
-iOS app that mirrors your pinned Claude Cowork artifacts onto your iPhone, with live data.
+PWA + sync daemon that mirrors your pinned Claude Cowork artifacts onto any device with a browser, with live data.
 
 ## How it works
 
 ```
-Mac (Cowork)                 Render                     iPhone
+Mac (Cowork)                 Render                     iPhone Safari
 ┌──────────────┐           ┌─────────────────┐       ┌──────────────┐
-│ artifacts.json│  every   │ artifacts-api   │  GET  │  Artifacts   │
-│ audit.jsonl   │ ──60s──▶ │  (Fastify)      │ ◀──── │   (SwiftUI)  │
-│              │   POST   │   ↓ pg pools    │       │   ↓ WKWebView│
-│ Sync daemon  │          │  artifacts (rw) │       │              │
-│ (launchd)    │          │  hamster   (ro) │◀──────│ POST /query  │
-└──────────────┘          └─────────────────┘       └──────────────┘
+│ artifacts.json│  every   │ artifacts-api   │  GET  │  PWA list    │
+│ audit.jsonl   │ ──60s──▶ │  (Fastify)      │ ◀──── │  + iframe    │
+│              │   POST   │   ↓ pg pools    │       │   shell that │
+│ Sync daemon  │          │  artifacts (rw) │       │   loads      │
+│ (launchd)    │          │  hamster   (ro) │◀──────│  /artifacts/ │
+└──────────────┘          └─────────────────┘       │   :id/html   │
+                                                    │  via fetch+  │
+                                                    │  cowork      │
+                                                    │  polyfill    │
+                                                    └──────────────┘
 ```
 
-- **`server/`** — Fastify API on Render. Stores artifact metadata + HTML in its own Postgres; proxies SQL queries to your existing hamster-db (read-only).
+- **`server/`** — Fastify API on Render. Stores artifact metadata + HTML in its own Postgres; proxies SQL queries to your existing hamster-db (read-only). Also serves the PWA shell pages and an injected `window.cowork.callMcpTool` polyfill so artifacts run as-is in the browser.
 - **`sync-daemon/`** — Node process running on your Mac via launchd. Polls Claude's local files every 60s, uploads pinned artifacts to the API.
-- **`ios/Artifacts/`** — SwiftUI app. Lists pinned artifacts, opens each in a `WKWebView` with a JS bridge so the artifact's existing `window.cowork.callMcpTool` calls turn into authenticated HTTPS calls to the API.
+- **`ios.archived/`** — Original SwiftUI app. Kept for reference; not in active use.
 
 ## Quick start (local)
 
@@ -35,11 +39,11 @@ cp .env.example .env   # point API_BASE_URL at http://localhost:3000
 npm install
 npm run sync:once
 
-# 3. iOS
-open ios/Artifacts/Artifacts.xcodeproj
-# Set Config-Local.xcconfig API_BASE_URL=http://localhost:3000
-# Cmd+R to run on simulator
+# 3. Open the PWA in your browser
+open "http://localhost:3000/?key=<YOUR_API_KEY>"
 ```
+
+The `?key=` query param is read by the page's JS, saved to `localStorage`, and stripped from the URL. Subsequent visits don't need it.
 
 ## Generate an API key
 
@@ -50,48 +54,35 @@ openssl rand -hex 32
 Use this same key in:
 - `server/.env` → `API_KEY`
 - `sync-daemon/.env` → `API_KEY`
-- `ios/Artifacts/Config-Local.xcconfig` → `API_KEY`
+- The first PWA visit: `https://your-host/?key=<KEY>`
+
+## Auth
+
+The server accepts the API key three ways (any one is sufficient):
+
+| Source | Used by |
+|--------|---------|
+| `Authorization: Bearer <KEY>` header | `sync-daemon`, ad-hoc curl |
+| `X-API-Key: <KEY>` header | external integrations |
+| `?key=<KEY>` query param | the PWA on first visit |
+
+After the first PWA visit, the key lives in `localStorage` and the browser sends it as a Bearer header on all `fetch` calls; the iframe carries it forward as a query param so the artifact shell can authenticate inside its own scope.
 
 ## Deploy to Render
 
-1. Push this repo to GitHub
-2. In Render dashboard, click "New" → "Blueprint" → connect this repo
-3. Render reads `render.yaml` and creates the web service + Postgres
-4. Set `API_KEY` and `HAMSTER_DB_URL` env vars on the web service (Render injects `ARTIFACTS_DB_URL` automatically from the Blueprint)
+1. Push to GitHub.
+2. Render dashboard → "New" → "Blueprint" → connect this repo.
+3. Render reads `render.yaml` and creates the web service + Postgres.
+4. Set `API_KEY` and `HAMSTER_DB_URL` env vars on the web service in the dashboard. (`ARTIFACTS_DB_URL` is auto-injected by the Blueprint.)
 
-See `docs/deploy.md` for details (TODO).
+## Add to Home Screen (iPhone)
 
-## iOS — first time (Xcode walkthrough)
+1. Open Safari on the iPhone, navigate to `https://artifacts-api-x7fu.onrender.com/?key=<KEY>` (replace with your URL + key).
+2. Wait for the list to load — confirms the key was stored.
+3. Tap the share sheet → "Add to Home Screen" → name it "Artifacts" → Add.
+4. Launch from the home-screen icon. Opens full-screen, no Safari chrome.
 
-You're new to Swift/Xcode, so here's the click-by-click for getting the app on your iPhone the first time:
-
-1. **Create the Xcode project**
-   - Open Xcode
-   - File → New → Project
-   - Choose **iOS** → **App** → Next
-   - Product Name: `Artifacts`
-   - Interface: **SwiftUI**
-   - Language: **Swift**
-   - Save it inside `~/Desktop/Projects/Artifacts/ios/`
-   - Uncheck "Create Git repository" (we already have one at the root)
-
-2. **Add the Swift source files** (already in `ios/Artifacts/`)
-   - In Xcode, right-click the `Artifacts` group in the file navigator → "Add Files to Artifacts…"
-   - Select the `Models/`, `Networking/`, `Views/`, `WebView/` folders and `Config-Local.xcconfig`
-   - Check "Copy items if needed" → Add
-
-3. **Wire up the xcconfig**
-   - Click the project (top of file navigator) → Info tab → Configurations
-   - Set both Debug and Release to use `Config-Local` (or `Config-Prod` for prod)
-
-4. **Run on simulator first** (Cmd+R)
-5. **Run on your phone:**
-   - Plug in your iPhone, unlock it, "Trust this computer"
-   - In Xcode, select your iPhone from the device dropdown (top bar)
-   - Project → Signing & Capabilities → "Automatically manage signing" → choose your Apple ID
-   - Cmd+R to build and install
-   - On your iPhone: Settings → General → VPN & Device Management → trust your developer profile
-   - Open the Artifacts app
+The icon is a placeholder (blue background + bold "A"). Regenerate it via `cd server && npx tsx scripts/gen-icon.ts` if you want to tweak; replace `server/scripts/gen-icon.ts` for a custom design.
 
 ## Install daemon as launchd LaunchAgent
 
@@ -103,3 +94,17 @@ tail -f ~/Library/Logs/Artifacts/sync.log
 ```
 
 Stop with: `launchctl unload ~/Library/LaunchAgents/com.shatayu.artifacts-sync.plist`
+
+## Routes
+
+| Route | Auth | Notes |
+|-------|------|-------|
+| `GET  /` | none (page) | PWA list; soaks `?key=` into localStorage. |
+| `GET  /artifact/:id` | none (page) | Shell page with header + full-bleed iframe. |
+| `GET  /manifest.webmanifest` | none | PWA manifest. |
+| `GET  /icon.png` | none | apple-touch-icon. |
+| `GET  /healthz` | none | Render health check. |
+| `GET  /artifacts` | required | Returns `[{id, name, description, version_ts}]` for pinned artifacts. |
+| `GET  /artifacts/:id/html` | required | Raw artifact HTML, prefixed with the cowork polyfill. |
+| `POST /artifacts/:id/query` | required | Body `{sql}` — runs through `sql-safety.ts`, executes on hamster-db. |
+| `POST /artifacts/sync` | required | Daemon-only. Upserts pinned artifacts, soft-deletes the rest. |
