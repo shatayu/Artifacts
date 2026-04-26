@@ -6,7 +6,41 @@ import { artifactsPool } from "./artifacts.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, "../../migrations");
 
+const TRANSIENT_PG_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNRESET",
+]);
+
+// Render rotates Postgres internal IPs during maintenance/scaling. If a deploy
+// lands at the wrong instant, the first DB connection gets ECONNREFUSED and
+// crashes the process (we hit this once when the artifacts-db updatedAt
+// matched the deploy timestamp). Retry the initial probe with backoff so a
+// brief window of unreachability doesn't take down the service.
+async function waitForDB(maxAttempts = 8): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await artifactsPool.query("SELECT 1");
+      return;
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (!code || !TRANSIENT_PG_ERROR_CODES.has(code) || attempt === maxAttempts) {
+        throw e;
+      }
+      const delay = Math.min(500 * 2 ** (attempt - 1), 5000);
+      console.warn(
+        `[migrate] DB not reachable (${code}); attempt ${attempt}/${maxAttempts}, retrying in ${delay}ms`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
 export async function runMigrations(): Promise<void> {
+  await waitForDB();
+
   await artifactsPool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       filename TEXT PRIMARY KEY,
