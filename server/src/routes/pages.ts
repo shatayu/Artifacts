@@ -22,9 +22,56 @@ const HEAD_META = `
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Artifacts">
-<meta name="theme-color" content="#f2f2f7">
+<meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0e10" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="/icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
+`;
+
+// Shared design tokens used by both pages. Warm off-white paper / deep ink /
+// mono caps for chrome / one orange accent. The palette intentionally avoids
+// iOS systemBlue and iOS card insets.
+const TOKENS = `
+:root {
+  color-scheme: light dark;
+  --bg: #faf9f5;
+  --surface: #ffffff;
+  --ink: #131211;
+  --mute: #6b665e;
+  --line: #e3dfd5;
+  --line-strong: #c8c2b3;
+  --accent: #d8541b;
+  --accent-ink: #ffffff;
+  --hover: #f1ede2;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e10;
+    --surface: #15151a;
+    --ink: #ecead7;
+    --mute: #8e8a7d;
+    --line: #25252b;
+    --line-strong: #3a3a40;
+    --accent: #ee7035;
+    --accent-ink: #1a1a1a;
+    --hover: #1c1c22;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.mono { font-family: var(--mono); letter-spacing: 0.02em; }
+.caps { text-transform: uppercase; letter-spacing: 0.08em; }
 `;
 
 const LIST_PAGE = `<!doctype html>
@@ -33,123 +80,118 @@ const LIST_PAGE = `<!doctype html>
 ${HEAD_META}
 <title>Artifacts</title>
 <style>
-  :root {
-    color-scheme: light dark;
-    --bg: #f2f2f7;
-    --card: #ffffff;
-    --primary: #000;
-    --secondary: #6e6e73;
-    --separator: #e5e5ea;
-    --accent: #007aff;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #000;
-      --card: #1c1c1e;
-      --primary: #fff;
-      --secondary: #98989f;
-      --separator: #38383a;
-    }
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--primary);
-    font: -apple-system-body, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  }
-  .titlebar {
-    display: flex; align-items: flex-end; justify-content: space-between;
-    margin: 16px 20px 12px;
-  }
-  .titlebar h1 {
-    font-size: 34px;
-    font-weight: 700;
-    letter-spacing: 0.37px;
-    margin: 0;
-  }
-  .refresh {
-    appearance: none; background: none; border: none;
-    color: var(--accent); font-size: 22px; line-height: 1;
-    padding: 8px; margin: 0; cursor: pointer;
-  }
-  .refresh.spin svg { animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .refresh svg { width: 22px; height: 22px; display: block; }
-  .list {
-    background: var(--card);
-    border-radius: 10px;
-    margin: 0 16px 16px;
-    overflow: hidden;
-  }
-  a.row {
-    display: block;
-    padding: 14px 16px;
-    color: inherit;
-    text-decoration: none;
-    border-top: 0.5px solid var(--separator);
-    position: relative;
-  }
-  a.row:first-child { border-top: none; }
-  a.row::after {
-    content: "›";
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--secondary);
-    font-size: 22px;
-    line-height: 1;
-  }
-  .name { font-size: 17px; font-weight: 600; padding-right: 24px; }
-  .desc { font-size: 12px; color: var(--secondary); margin-top: 4px; padding-right: 24px;
-          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-  .state {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 80px 20px; color: var(--secondary); text-align: center;
-  }
-  .state svg { width: 40px; height: 40px; margin-bottom: 12px; }
-  .state h2 { color: var(--primary); font-size: 17px; margin: 0 0 6px; }
-  .state p { margin: 6px 0; font-size: 13px; }
-  .state input {
-    margin-top: 16px;
-    padding: 12px 14px;
-    font-size: 15px;
-    border-radius: 10px;
-    border: 1px solid var(--separator);
-    background: var(--card);
-    color: var(--primary);
-    width: 100%;
-    max-width: 320px;
-  }
-  .state button {
-    margin-top: 12px;
-    padding: 12px 20px;
-    font-size: 16px;
-    font-weight: 600;
-    border-radius: 10px;
-    border: none;
-    background: var(--accent);
-    color: #fff;
-  }
+${TOKENS}
+body {
+  padding:
+    calc(env(safe-area-inset-top) + 4px)
+    calc(env(safe-area-inset-right) + 16px)
+    calc(env(safe-area-inset-bottom) + 32px)
+    calc(env(safe-area-inset-left) + 16px);
+  max-width: 720px;
+  margin: 0 auto;
+}
+.head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24px 0 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.head .title {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+  display: flex; align-items: baseline; gap: 12px;
+}
+.head .title .count { color: var(--mute); }
+.iconbtn {
+  appearance: none; background: transparent; border: 1px solid var(--line);
+  color: var(--ink); padding: 6px; cursor: pointer;
+  border-radius: 4px; line-height: 0;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.iconbtn:hover { background: var(--hover); border-color: var(--line-strong); }
+.iconbtn.spin svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.iconbtn svg { width: 16px; height: 16px; display: block; }
+
+.list {
+  display: flex; flex-direction: column; gap: 10px;
+}
+a.card {
+  display: block;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: inherit; text-decoration: none;
+  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+a.card:hover { border-color: var(--line-strong); }
+a.card:active { background: var(--hover); transform: translateY(1px); }
+a.card .name { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+a.card .meta {
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--mute);
+  margin-top: 4px;
+}
+a.card .meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--mute); }
+a.card .desc {
+  margin-top: 10px; font-size: 14px; color: var(--mute); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 20px; color: var(--mute); text-align: center; gap: 14px;
+}
+.state svg { width: 28px; height: 28px; opacity: 0.6; }
+.state h2 { color: var(--ink); font-size: 16px; margin: 0; font-weight: 600; }
+.state p { margin: 0; font-size: 13px; }
+.state .note {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mute);
+}
+.state input {
+  margin-top: 4px;
+  padding: 10px 12px; font-size: 14px;
+  border: 1px solid var(--line-strong); border-radius: 4px;
+  background: var(--surface); color: var(--ink);
+  width: 100%; max-width: 320px;
+  font-family: var(--mono);
+}
+.state input:focus { outline: none; border-color: var(--accent); }
+.state .primary {
+  appearance: none; border: 1px solid var(--accent);
+  background: var(--accent); color: var(--accent-ink);
+  padding: 9px 18px; font-size: 13px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  border-radius: 4px; cursor: pointer; font-family: var(--mono);
+}
+.state .primary:hover { filter: brightness(0.95); }
 </style>
 </head>
 <body>
-<div class="titlebar">
-  <h1>Artifacts</h1>
-  <button id="refresh" class="refresh" aria-label="Refresh">
+<div class="head">
+  <div class="title">
+    <span>Artifacts</span>
+    <span id="count" class="count"></span>
+  </div>
+  <button id="refresh" class="iconbtn" aria-label="Refresh">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 12a9 9 0 1 1-3-6.7"></path>
       <polyline points="21 4 21 10 15 10"></polyline>
     </svg>
   </button>
 </div>
-<div id="root"><div class="state"><p>Loading…</p></div></div>
+<div id="root"><div class="state"><p class="note">Loading…</p></div></div>
 <script>
 (function () {
   const KEY_NAME = "artifacts_api_key";
   const root = document.getElementById("root");
+  const countEl = document.getElementById("count");
 
   // Soak ?key= from URL on first visit.
   const params = new URLSearchParams(window.location.search);
@@ -170,17 +212,27 @@ ${HEAD_META}
       .replace(/'/g, "&#39;");
   }
 
+  function relativeTime(ms) {
+    const diff = Date.now() - ms;
+    if (diff < 60_000) return "just now";
+    if (diff < 3_600_000) return Math.floor(diff / 60_000) + "m ago";
+    if (diff < 86_400_000) return Math.floor(diff / 3_600_000) + "h ago";
+    if (diff < 30 * 86_400_000) return Math.floor(diff / 86_400_000) + "d ago";
+    return new Date(ms).toLocaleDateString();
+  }
+
   function renderMissingKey() {
+    countEl.textContent = "";
     root.innerHTML =
       '<div class="state">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
-          '<rect x="4" y="10" width="16" height="11" rx="2"></rect>' +
+          '<rect x="4" y="10" width="16" height="11" rx="1"></rect>' +
           '<path d="M8 10V7a4 4 0 0 1 8 0v3"></path>' +
         '</svg>' +
-        '<h2>API key needed</h2>' +
-        '<p>Paste your API key to continue.</p>' +
-        '<input id="keyInput" type="password" autocomplete="off" placeholder="API key">' +
-        '<button id="keySave">Save</button>' +
+        '<h2>API key required</h2>' +
+        '<p class="note">Paste your key to continue</p>' +
+        '<input id="keyInput" type="password" autocomplete="off" placeholder="sk_…">' +
+        '<button id="keySave" class="primary">Save</button>' +
       '</div>';
     document.getElementById("keySave").onclick = function () {
       const v = document.getElementById("keyInput").value.trim();
@@ -188,38 +240,50 @@ ${HEAD_META}
       localStorage.setItem(KEY_NAME, v);
       load();
     };
+    document.getElementById("keyInput").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") document.getElementById("keySave").click();
+    });
   }
 
   function renderError(msg) {
+    countEl.textContent = "";
     root.innerHTML =
       '<div class="state">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
-          '<path d="M12 9v4M12 17h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path>' +
+          '<circle cx="12" cy="12" r="9"></circle>' +
+          '<path d="M12 8v4M12 16h.01"></path>' +
         '</svg>' +
-        '<h2>Couldn\\'t load artifacts</h2>' +
-        '<p>' + escapeHtml(msg) + '</p>' +
-        '<button id="retryBtn">Retry</button>' +
+        '<h2>Could not load artifacts</h2>' +
+        '<p class="note">' + escapeHtml(msg) + '</p>' +
+        '<button id="retryBtn" class="primary">Retry</button>' +
       '</div>';
     document.getElementById("retryBtn").onclick = load;
   }
 
   function renderEmpty() {
+    countEl.textContent = "0";
     root.innerHTML =
       '<div class="state">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
-          '<path d="M22 12h-6l-2 3h-4l-2-3H2"></path>' +
-          '<path d="M5 5h14l3 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6Z"></path>' +
+          '<rect x="3" y="6" width="18" height="14" rx="1"></rect>' +
+          '<path d="M3 10h18"></path>' +
         '</svg>' +
         '<h2>No pinned artifacts</h2>' +
-        '<p>Star artifacts in Cowork to see them here.</p>' +
+        '<p class="note">Star artifacts in Cowork to see them here</p>' +
       '</div>';
   }
 
   function renderList(items) {
     if (!items.length) return renderEmpty();
+    countEl.textContent = String(items.length);
     const html = items.map(function (a) {
-      return '<a class="row" href="/artifact/' + encodeURIComponent(a.id) + '">' +
+      const updated = a.version_ts ? relativeTime(Number(a.version_ts)) : "";
+      return '<a class="card" href="/artifact/' + encodeURIComponent(a.id) + '">' +
                '<div class="name">' + escapeHtml(a.name) + '</div>' +
+               '<div class="meta">' +
+                 '<span>' + escapeHtml(a.id) + '</span>' +
+                 (updated ? '<span class="dot"></span><span>' + escapeHtml(updated) + '</span>' : '') +
+               '</div>' +
                (a.description
                  ? '<div class="desc">' + escapeHtml(a.description) + '</div>'
                  : '') +
@@ -234,7 +298,7 @@ ${HEAD_META}
     opts = opts || {};
     const key = localStorage.getItem(KEY_NAME);
     if (!key) return renderMissingKey();
-    if (!opts.silent) root.innerHTML = '<div class="state"><p>Loading…</p></div>';
+    if (!opts.silent) root.innerHTML = '<div class="state"><p class="note">Loading…</p></div>';
     refreshBtn.classList.add("spin");
     try {
       const res = await fetch("/artifacts", {
@@ -258,9 +322,6 @@ ${HEAD_META}
   }
 
   refreshBtn.addEventListener("click", function () { load({ silent: true }); });
-
-  // Refresh whenever the page comes back to the foreground (PWA app-switch,
-  // back button from a detail page via bfcache, tab focus).
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") load({ silent: true });
   });
@@ -280,66 +341,70 @@ function shellPage(name: string, id: string): string {
 <html lang="en">
 <head>
 ${HEAD_META}
-<title>${escapeHtml(name)}</title>
+<title>${escapeHtml(name)} · Artifacts</title>
 <style>
-  :root {
-    color-scheme: light dark;
-    --bg: #f2f2f7;
-    --card: #ffffff;
-    --primary: #000;
-    --secondary: #6e6e73;
-    --separator: #e5e5ea;
-    --accent: #007aff;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #000; --card: #1c1c1e; --primary: #fff; --secondary: #98989f; --separator: #38383a; }
-  }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--primary); font: -apple-system-body, system-ui, sans-serif; }
-  body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-  header {
-    display: flex; align-items: center; gap: 8px;
-    padding: 12px 16px;
-    background: var(--card);
-    border-bottom: 0.5px solid var(--separator);
-    position: sticky; top: 0; z-index: 1;
-  }
-  header a.back {
-    color: var(--accent);
-    text-decoration: none;
-    font-size: 17px;
-    display: inline-flex; align-items: center; gap: 2px;
-  }
-  header .title {
-    font-size: 17px; font-weight: 600;
-    flex: 1; text-align: center;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  header .refresh {
-    appearance: none; background: none; border: none;
-    color: var(--accent); padding: 4px 8px; cursor: pointer;
-    font-size: 0;
-  }
-  header .refresh.spin svg { animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  header .refresh svg { width: 20px; height: 20px; display: block; }
-  iframe {
-    flex: 1;
-    width: 100%;
-    border: 0;
-    background: var(--bg);
-  }
-  .err {
-    padding: 60px 24px;
-    color: var(--secondary);
-    text-align: center;
-  }
+${TOKENS}
+html, body { height: 100%; }
+body {
+  display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: env(safe-area-inset-top); z-index: 1;
+}
+header .crumb {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--mute);
+  display: flex; align-items: baseline; gap: 8px;
+  overflow: hidden;
+}
+header .crumb a {
+  color: var(--ink); text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms ease;
+}
+header .crumb a:hover { border-bottom-color: var(--accent); }
+header .crumb .sep { color: var(--mute); }
+header .crumb .name {
+  text-transform: none; letter-spacing: -0.005em; color: var(--ink);
+  font-family: var(--sans); font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.iconbtn {
+  appearance: none; background: transparent; border: 1px solid var(--line);
+  color: var(--ink); padding: 6px; cursor: pointer;
+  border-radius: 4px; line-height: 0;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.iconbtn:hover { background: var(--hover); border-color: var(--line-strong); }
+.iconbtn.spin svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.iconbtn svg { width: 16px; height: 16px; display: block; }
+iframe {
+  flex: 1; width: 100%; border: 0; background: var(--surface);
+}
+.err {
+  padding: 60px 24px; color: var(--mute); text-align: center;
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.err a { color: var(--accent); }
 </style>
 </head>
 <body>
 <header>
-  <a href="/" class="back">‹ Artifacts</a>
-  <div class="title">${escapeHtml(name)}</div>
-  <button id="refresh" class="refresh" aria-label="Refresh">
+  <div class="crumb">
+    <a href="/">Artifacts</a>
+    <span class="sep">/</span>
+    <span class="name">${escapeHtml(name)}</span>
+  </div>
+  <button id="refresh" class="iconbtn" aria-label="Refresh">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 12a9 9 0 1 1-3-6.7"></path>
       <polyline points="21 4 21 10 15 10"></polyline>
@@ -359,7 +424,6 @@ ${HEAD_META}
     return;
   }
   function buildSrc() {
-    // Cache-buster on every reload so the polyfill + new HTML are fetched fresh.
     return "/artifacts/" + encodeURIComponent(ARTIFACT_ID) + "/html?key=" +
            encodeURIComponent(key) + "&_=" + Date.now();
   }
@@ -384,8 +448,8 @@ const MANIFEST = JSON.stringify({
   short_name: "Artifacts",
   start_url: "/",
   display: "standalone",
-  background_color: "#f2f2f7",
-  theme_color: "#f2f2f7",
+  background_color: "#faf9f5",
+  theme_color: "#faf9f5",
   icons: [
     { src: "/icon.png", sizes: "180x180", type: "image/png" },
   ],
@@ -408,7 +472,7 @@ export const pagesRoute: FastifyPluginAsync = async (fastify) => {
         reply.header("Content-Type", "text/html; charset=utf-8");
         return reply
           .code(404)
-          .send(`<!doctype html><meta charset="utf-8"><title>Not found</title><p style="font:16px system-ui;padding:40px">Artifact not found. <a href="/">Back</a></p>`);
+          .send(`<!doctype html><meta charset="utf-8"><title>Not found</title><p style="font:14px ui-monospace,Menlo,monospace;padding:60px 24px;text-align:center;letter-spacing:.08em;text-transform:uppercase;color:#6b665e">Artifact not found · <a href="/" style="color:#d8541b">back</a></p>`);
       }
       reply.header("Content-Type", "text/html; charset=utf-8");
       return shellPage(rows[0]!.name, req.params.id);
