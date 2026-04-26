@@ -59,12 +59,24 @@ ${HEAD_META}
     font: -apple-system-body, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
-  h1 {
+  .titlebar {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin: 16px 20px 12px;
+  }
+  .titlebar h1 {
     font-size: 34px;
     font-weight: 700;
     letter-spacing: 0.37px;
-    margin: 16px 20px 12px;
+    margin: 0;
   }
+  .refresh {
+    appearance: none; background: none; border: none;
+    color: var(--accent); font-size: 22px; line-height: 1;
+    padding: 8px; margin: 0; cursor: pointer;
+  }
+  .refresh.spin svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .refresh svg { width: 22px; height: 22px; display: block; }
   .list {
     background: var(--card);
     border-radius: 10px;
@@ -124,7 +136,15 @@ ${HEAD_META}
 </style>
 </head>
 <body>
-<h1>Artifacts</h1>
+<div class="titlebar">
+  <h1>Artifacts</h1>
+  <button id="refresh" class="refresh" aria-label="Refresh">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12a9 9 0 1 1-3-6.7"></path>
+      <polyline points="21 4 21 10 15 10"></polyline>
+    </svg>
+  </button>
+</div>
 <div id="root"><div class="state"><p>Loading…</p></div></div>
 <script>
 (function () {
@@ -208,10 +228,14 @@ ${HEAD_META}
     root.innerHTML = '<div class="list">' + html + '</div>';
   }
 
-  async function load() {
+  const refreshBtn = document.getElementById("refresh");
+
+  async function load(opts) {
+    opts = opts || {};
     const key = localStorage.getItem(KEY_NAME);
     if (!key) return renderMissingKey();
-    root.innerHTML = '<div class="state"><p>Loading…</p></div>';
+    if (!opts.silent) root.innerHTML = '<div class="state"><p>Loading…</p></div>';
+    refreshBtn.classList.add("spin");
     try {
       const res = await fetch("/artifacts", {
         headers: { Authorization: "Bearer " + key },
@@ -228,8 +252,21 @@ ${HEAD_META}
       renderList(items);
     } catch (e) {
       renderError(e && e.message ? e.message : String(e));
+    } finally {
+      refreshBtn.classList.remove("spin");
     }
   }
+
+  refreshBtn.addEventListener("click", function () { load({ silent: true }); });
+
+  // Refresh whenever the page comes back to the foreground (PWA app-switch,
+  // back button from a detail page via bfcache, tab focus).
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") load({ silent: true });
+  });
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) load({ silent: true });
+  });
 
   load();
 })();
@@ -275,9 +312,16 @@ ${HEAD_META}
   header .title {
     font-size: 17px; font-weight: 600;
     flex: 1; text-align: center;
-    margin-right: 56px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  header .refresh {
+    appearance: none; background: none; border: none;
+    color: var(--accent); padding: 4px 8px; cursor: pointer;
+    font-size: 0;
+  }
+  header .refresh.spin svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  header .refresh svg { width: 20px; height: 20px; display: block; }
   iframe {
     flex: 1;
     width: 100%;
@@ -295,6 +339,12 @@ ${HEAD_META}
 <header>
   <a href="/" class="back">‹ Artifacts</a>
   <div class="title">${escapeHtml(name)}</div>
+  <button id="refresh" class="refresh" aria-label="Refresh">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12a9 9 0 1 1-3-6.7"></path>
+      <polyline points="21 4 21 10 15 10"></polyline>
+    </svg>
+  </button>
 </header>
 <iframe id="frame" allow="clipboard-write"></iframe>
 <script>
@@ -303,11 +353,25 @@ ${HEAD_META}
   const ARTIFACT_ID = ${JSON.stringify(id)};
   const key = localStorage.getItem(KEY_NAME);
   const frame = document.getElementById("frame");
+  const refreshBtn = document.getElementById("refresh");
   if (!key) {
     document.body.innerHTML = '<div class="err">No API key saved. <a href="/">Go back to set one.</a></div>';
     return;
   }
-  frame.src = "/artifacts/" + encodeURIComponent(ARTIFACT_ID) + "/html?key=" + encodeURIComponent(key);
+  function buildSrc() {
+    // Cache-buster on every reload so the polyfill + new HTML are fetched fresh.
+    return "/artifacts/" + encodeURIComponent(ARTIFACT_ID) + "/html?key=" +
+           encodeURIComponent(key) + "&_=" + Date.now();
+  }
+  function reload() {
+    refreshBtn.classList.add("spin");
+    frame.src = buildSrc();
+  }
+  frame.addEventListener("load", function () {
+    refreshBtn.classList.remove("spin");
+  });
+  refreshBtn.addEventListener("click", reload);
+  frame.src = buildSrc();
 })();
 </script>
 </body>
