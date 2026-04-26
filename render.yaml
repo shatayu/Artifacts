@@ -1,0 +1,28 @@
+databases:
+  - name: artifacts-db
+    plan: free
+    databaseName: artifacts
+    user: artifacts
+
+services:
+  - type: web
+    name: artifacts-api
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ARTIFACTS_DB_URL
+        fromDatabase:
+          name: artifacts-db
+          property: connectionString
+      - key: HAMSTER_DB_URL
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: PORT
+        value: "10000"

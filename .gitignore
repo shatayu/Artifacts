@@ -1,0 +1,28 @@
+# Node
+node_modules/
+dist/
+*.log
+.env
+.env.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Xcode
+ios/**/build/
+ios/**/DerivedData/
+ios/**/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
+ios/**/Config-Local.xcconfig
+ios/**/Config-Prod.xcconfig
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Local secrets
+*.secret
+secrets/
