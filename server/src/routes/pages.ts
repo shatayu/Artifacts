@@ -303,6 +303,7 @@ a.card .desc {
     try {
       const res = await fetch("/artifacts", {
         headers: { Authorization: "Bearer " + key },
+        cache: opts.fresh ? "reload" : "default",
       });
       if (res.status === 401) {
         localStorage.removeItem(KEY_NAME);
@@ -314,6 +315,7 @@ a.card .desc {
       }
       const items = await res.json();
       renderList(items);
+      prefetchArtifacts(items, key);
     } catch (e) {
       renderError(e && e.message ? e.message : String(e));
     } finally {
@@ -321,13 +323,28 @@ a.card .desc {
     }
   }
 
-  refreshBtn.addEventListener("click", function () { load({ silent: true }); });
+  // Fire-and-forget: warm the SW cache with every artifact's HTML so a tap
+  // on a card renders instantly. Concurrent, errors swallowed (whatever
+  // succeeds is a win; a failure just means that one card won't be cached).
+  function prefetchArtifacts(items, key) {
+    if (!("serviceWorker" in navigator)) return;
+    items.forEach(function (a) {
+      const url = "/artifacts/" + encodeURIComponent(a.id) + "/html?key=" + encodeURIComponent(key);
+      fetch(url).catch(function () {});
+    });
+  }
+
+  refreshBtn.addEventListener("click", function () { load({ silent: true, fresh: true }); });
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible") load({ silent: true });
+    if (document.visibilityState === "visible") load({ silent: true, fresh: true });
   });
   window.addEventListener("pageshow", function (e) {
     if (e.persisted) load({ silent: true });
   });
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  }
 
   load();
 })();
@@ -423,19 +440,23 @@ iframe {
     document.body.innerHTML = '<div class="err">No API key saved. <a href="/">Go back to set one.</a></div>';
     return;
   }
-  function buildSrc() {
-    return "/artifacts/" + encodeURIComponent(ARTIFACT_ID) + "/html?key=" +
-           encodeURIComponent(key) + "&_=" + Date.now();
+  function buildSrc(fresh) {
+    var qs = "?key=" + encodeURIComponent(key);
+    if (fresh) qs += "&fresh=" + Date.now();
+    return "/artifacts/" + encodeURIComponent(ARTIFACT_ID) + "/html" + qs;
   }
   function reload() {
     refreshBtn.classList.add("spin");
-    frame.src = buildSrc();
+    frame.src = buildSrc(true);
   }
   frame.addEventListener("load", function () {
     refreshBtn.classList.remove("spin");
   });
   refreshBtn.addEventListener("click", reload);
-  frame.src = buildSrc();
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  }
+  frame.src = buildSrc(false);
 })();
 </script>
 </body>
@@ -454,6 +475,93 @@ const MANIFEST = JSON.stringify({
     { src: "/icon.png", sizes: "180x180", type: "image/png" },
   ],
 });
+
+// Bump CACHE_VERSION whenever SERVICE_WORKER changes so old clients drop their
+// caches on activate. Pages and artifact HTML use stale-while-revalidate;
+// /artifacts/:id/query (POST) is always passed through to the network because
+// the SQL results need to be live.
+const CACHE_VERSION = "v1";
+const SERVICE_WORKER = `
+const CACHE = "artifacts-${CACHE_VERSION}";
+const STATIC = ["/icon.png", "/manifest.webmanifest"];
+
+self.addEventListener("install", function (e) {
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(function (c) { return c.addAll(STATIC); })
+      .then(function () { return self.skipWaiting(); })
+  );
+});
+
+self.addEventListener("activate", function (e) {
+  e.waitUntil(
+    caches.keys().then(function (keys) {
+      return Promise.all(
+        keys.filter(function (k) { return k !== CACHE; })
+            .map(function (k) { return caches.delete(k); })
+      );
+    }).then(function () { return self.clients.claim(); })
+  );
+});
+
+// Cache busters and per-session query params shouldn't fragment the cache.
+function cacheKey(url) {
+  var u = new URL(url);
+  u.searchParams.delete("_");
+  return u.toString();
+}
+
+function staleWhileRevalidate(req) {
+  return caches.open(CACHE).then(function (cache) {
+    var key = cacheKey(req.url);
+    return cache.match(key).then(function (cached) {
+      var network = fetch(req).then(function (res) {
+        if (res && res.ok) {
+          cache.put(key, res.clone()).catch(function () {});
+        }
+        return res;
+      }).catch(function () { return cached; });
+      return cached || network;
+    });
+  });
+}
+
+function networkAndUpdate(req) {
+  return fetch(req).then(function (res) {
+    if (res && res.ok) {
+      caches.open(CACHE).then(function (c) {
+        c.put(cacheKey(req.url), res.clone()).catch(function () {});
+      });
+    }
+    return res;
+  });
+}
+
+function shouldBypassCache(req) {
+  if (req.cache === "reload" || req.cache === "no-cache") return true;
+  return new URL(req.url).searchParams.has("fresh");
+}
+
+self.addEventListener("fetch", function (e) {
+  var url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return;
+  if (e.request.method !== "GET") return;
+
+  var p = url.pathname;
+  var isPage = p === "/" || p.indexOf("/artifact/") === 0;
+  var isList = p === "/artifacts";
+  var isHtml = /^\\/artifacts\\/[^/]+\\/html$/.test(p);
+  var isStatic = STATIC.indexOf(p) !== -1;
+
+  if (!(isPage || isList || isHtml || isStatic)) return;
+
+  if (shouldBypassCache(e.request)) {
+    e.respondWith(networkAndUpdate(e.request));
+  } else {
+    e.respondWith(staleWhileRevalidate(e.request));
+  }
+});
+`;
 
 export const pagesRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", async (_req, reply) => {
@@ -493,5 +601,12 @@ export const pagesRoute: FastifyPluginAsync = async (fastify) => {
     } catch {
       return reply.code(404).send({ error: "icon not generated" });
     }
+  });
+
+  fastify.get("/sw.js", async (_req, reply) => {
+    reply.header("Content-Type", "application/javascript; charset=utf-8");
+    reply.header("Cache-Control", "no-cache");
+    reply.header("Service-Worker-Allowed", "/");
+    return SERVICE_WORKER;
   });
 };
